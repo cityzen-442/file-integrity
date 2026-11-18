@@ -60,7 +60,9 @@ def load_baseline(baseline_file=BASELINE_FILE):
 def compare(baseline, current):
     """Compare two {path: hash} dictionaries.
 
-    Returns (added, modified, deleted) as sorted lists of file paths.
+    Returns (added, modified, deleted, renamed).
+    added, modified and deleted are sorted lists of paths.
+    renamed is a sorted list of (old_path, new_path) pairs.
     """
     added = sorted(current.keys() - baseline.keys())
     deleted = sorted(baseline.keys() - current.keys())
@@ -68,7 +70,27 @@ def compare(baseline, current):
         path for path in baseline.keys() & current.keys()
         if baseline[path] != current[path]
     )
-    return added, modified, deleted
+
+    # A renamed file has a new path but the same hash as a deleted file.
+    # Group the deleted paths by hash, then try to match each added path.
+    deleted_by_hash = {}
+    for path in deleted:
+        deleted_by_hash.setdefault(baseline[path], []).append(path)
+
+    renamed = []
+    still_added = []
+    for path in added:
+        candidates = deleted_by_hash.get(current[path])
+        if candidates:
+            old_path = candidates.pop(0)  # use each deleted file only once
+            renamed.append((old_path, path))
+        else:
+            still_added.append(path)
+
+    renamed_old_paths = {old for old, new in renamed}
+    still_deleted = [p for p in deleted if p not in renamed_old_paths]
+
+    return still_added, modified, still_deleted, sorted(renamed)
 
 
 def main():
@@ -97,19 +119,22 @@ def main():
             print(f"No usable {BASELINE_FILE}. Run: py integrity.py baseline {folder}")
             return
 
-        added, modified, deleted = compare(baseline, scan_folder(folder))
+        added, modified, deleted, renamed = compare(baseline, scan_folder(folder))
 
         for path in modified:
             print(f"[MODIFIED] {path}")
+        for old_path, new_path in renamed:
+            print(f"[RENAMED]  {old_path} -> {new_path}")
         for path in added:
             print(f"[ADDED]    {path}")
         for path in deleted:
             print(f"[DELETED]  {path}")
 
-        if not (added or modified or deleted):
+        if not (added or modified or deleted or renamed):
             print("OK: no changes since the baseline.")
         else:
-            print(f"\n{len(modified)} modified, {len(added)} added, {len(deleted)} deleted")
+            print(f"\n{len(modified)} modified, {len(renamed)} renamed, "
+                  f"{len(added)} added, {len(deleted)} deleted")
             sys.exit(1)
 
     else:
