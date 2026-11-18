@@ -46,6 +46,31 @@ def save_baseline(hashes, baseline_file=BASELINE_FILE):
         json.dump(hashes, f, indent=2, sort_keys=True)
 
 
+def load_baseline(baseline_file=BASELINE_FILE):
+    """Read the saved hashes. Returns None if there is no usable baseline."""
+    try:
+        with open(baseline_file, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError:
+        return None
+
+
+def compare(baseline, current):
+    """Compare two {path: hash} dictionaries.
+
+    Returns (added, modified, deleted) as sorted lists of file paths.
+    """
+    added = sorted(current.keys() - baseline.keys())
+    deleted = sorted(baseline.keys() - current.keys())
+    modified = sorted(
+        path for path in baseline.keys() & current.keys()
+        if baseline[path] != current[path]
+    )
+    return added, modified, deleted
+
+
 def main():
     if len(sys.argv) == 3 and sys.argv[1] == "hash":
         try:
@@ -62,10 +87,36 @@ def main():
         save_baseline(hashes)
         print(f"Saved baseline of {len(hashes)} files to {BASELINE_FILE}")
 
+    elif len(sys.argv) == 3 and sys.argv[1] == "check":
+        folder = sys.argv[2]
+        if not Path(folder).is_dir():
+            print(f"Folder not found: {folder}")
+            return
+        baseline = load_baseline()
+        if baseline is None:
+            print(f"No usable {BASELINE_FILE}. Run: py integrity.py baseline {folder}")
+            return
+
+        added, modified, deleted = compare(baseline, scan_folder(folder))
+
+        for path in modified:
+            print(f"[MODIFIED] {path}")
+        for path in added:
+            print(f"[ADDED]    {path}")
+        for path in deleted:
+            print(f"[DELETED]  {path}")
+
+        if not (added or modified or deleted):
+            print("OK: no changes since the baseline.")
+        else:
+            print(f"\n{len(modified)} modified, {len(added)} added, {len(deleted)} deleted")
+            sys.exit(1)
+
     else:
         print("Usage:")
         print("  py integrity.py hash <file>")
         print("  py integrity.py baseline <folder>")
+        print("  py integrity.py check <folder>")
 
 
 if __name__ == "__main__":
