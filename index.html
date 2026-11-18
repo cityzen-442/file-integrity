@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>File Integrity Checker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap">
+<style>
+:root{--bg:#eef1ec;--panel:#fbfcfa;--ink:#16221c;--muted:#5b6a62;--line:#cfd7cf;--bad:#c2412d;--warn:#c98a12;--good:#2f8a57;--accent:#176b8c;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1713;--panel:#17211b;--ink:#e6efe8;--muted:#93a39a;--line:#2b3a31;--bad:#ef7a63;--warn:#e2a93a;--good:#5fc08a;--accent:#5cb8dc;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1713;--panel:#17211b;--ink:#e6efe8;--muted:#93a39a;--line:#2b3a31;--bad:#ef7a63;--warn:#e2a93a;--good:#5fc08a;--accent:#5cb8dc;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5}
+main{max-width:760px;margin:0 auto;padding:40px 20px 64px}
+h1{font-size:clamp(2rem,6vw,3.2rem);line-height:1.05;margin:0 0 12px;font-weight:800;letter-spacing:-.02em}
+h2{font-size:1.15rem;margin:28px 0 8px}
+.lede{color:var(--muted);margin:0 0 24px;max-width:58ch}
+.tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+button,.btn{font:inherit;font-weight:600;color:var(--ink);background:var(--panel);border:2px solid var(--line);border-radius:10px;padding:10px 16px;cursor:pointer;display:inline-block}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,.btn:focus-within,input:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.tabs button[aria-selected="true"]{border-color:var(--accent);color:var(--accent)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+input[type=text]{font:inherit;color:var(--ink);background:var(--panel);border:2px solid var(--line);border-radius:10px;padding:12px 14px;width:100%}
+.status{color:var(--muted);margin:10px 0}
+.verdict{font-size:clamp(1.8rem,6vw,2.8rem);font-weight:800;letter-spacing:-.02em;line-height:1.1;margin:18px 0 8px}
+ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+li{display:flex;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);word-break:break-all}
+.tag{flex:none;width:6.5em;font-weight:800}
+.MODIFIED,.DELETED,.bad{color:var(--bad)}.ADDED,.RENAMED{color:var(--warn)}.good{color:var(--good)}
+.hash{color:var(--muted);font-size:.85rem}
+.scroll{overflow-x:auto}
+.note{margin-top:28px;color:var(--muted);font-size:.9rem;max-width:64ch}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<h1>Has this file been changed?</h1>
+<p class="lede">Fingerprint files now, then check them again later. If even one byte changes, the SHA-256 fingerprint changes. Files are read inside your browser and never uploaded.</p>
+
+<div class="tabs" role="tablist">
+<button role="tab" id="t1" aria-selected="true" aria-controls="p1">Baseline and check</button>
+<button role="tab" id="t2" aria-selected="false" aria-controls="p2">Verify a download</button>
+</div>
+
+<section id="p1" role="tabpanel" aria-labelledby="t1">
+<div class="row">
+<label class="btn">Choose files<input id="pickFiles" type="file" multiple></label>
+<label class="btn">Choose folder<input id="pickDir" type="file" webkitdirectory multiple></label>
+</div>
+<p class="status" id="pickStatus">Nothing selected yet.</p>
+<div class="row">
+<button id="saveBase" disabled>Save as baseline</button>
+<button id="check" disabled>Check against baseline</button>
+</div>
+<p class="status" id="baseStatus"></p>
+<div class="row">
+<button id="dl" disabled>Download baseline (.json)</button>
+<label class="btn">Load baseline file<input id="loadBase" type="file" accept=".json,application/json"></label>
+<button id="clear" disabled>Clear baseline</button>
+</div>
+<div id="report" hidden>
+<div class="verdict" id="verdict"></div>
+<div class="scroll"><ul id="changes"></ul></div>
+</div>
+<h2>Selected files</h2>
+<div class="scroll"><ul id="current"></ul></div>
+</section>
+
+<section id="p2" role="tabpanel" aria-labelledby="t2" hidden>
+<p class="lede">Many sites publish a SHA-256 checksum next to a download. Pick the file you downloaded, paste the published checksum, and see whether they match.</p>
+<div class="row"><label class="btn">Choose file<input id="vFile" type="file"></label></div>
+<p class="status" id="vStatus">No file selected.</p>
+<label for="vHash" class="status">Published SHA-256 checksum</label>
+<input id="vHash" type="text" autocomplete="off" spellcheck="false" placeholder="64 characters, 0-9 and a-f">
+<div class="verdict" id="vResult"></div>
+<p class="status" id="vDetail"></p>
+</section>
+
+<p class="note">The baseline is kept in this browser (if storage is allowed) and can be downloaded as a file. Anyone who can edit that file can also make a change look clean, so keep it somewhere safe. Reading a file loads it into memory, so very large files (several GB) may fail. Changing only the contents and the name together shows as one deleted and one added file. Folders are matched by relative path, and venv, .git, node_modules and __pycache__ are skipped.</p>
+</main>
+
+<script>
+const SKIP = new Set(["venv", ".git", "__pycache__", "node_modules"]);
+const KEY = "fic-baseline";
+let current = {};   // {path: hash} from the latest selection
+let baseline = null; // {created, files}
+
+const $ = id => document.getElementById(id);
+const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+async function sha256(file){ return hex(await crypto.subtle.digest("SHA-256", await file.arrayBuffer())); }
+
+function relPath(file, isFolder){
+  if(!isFolder) return file.name;
+  const parts = (file.webkitRelativePath || file.name).split("/");
+  return parts.slice(1).join("/") || file.name;   // drop the top folder name
+}
+
+function compare(base, cur){
+  const bk = Object.keys(base), ck = Object.keys(cur);
+  let added = ck.filter(p => !(p in base)).sort();
+  const deleted = bk.filter(p => !(p in cur)).sort();
+  const modified = bk.filter(p => p in cur && base[p] !== cur[p]).sort();
+  const byHash = {};
+  for(const p of deleted) (byHash[base[p]] ||= []).push(p);
+  const renamed = [], stillAdded = [];
+  for(const p of added){
+    const c = byHash[cur[p]];
+    if(c && c.length) renamed.push([c.shift(), p]); else stillAdded.push(p);
+  }
+  const gone = new Set(renamed.map(r => r[0]));
+  return {added: stillAdded, modified, deleted: deleted.filter(p => !gone.has(p)), renamed: renamed.sort()};
+}
+
+function setBaseline(b, persist){
+  baseline = b;
+  if(persist){ try{ localStorage.setItem(KEY, JSON.stringify(b)); }catch(e){} }
+  const n = b ? Object.keys(b.files).length : 0;
+  $("baseStatus").textContent = b ? `Baseline saved: ${n} file${n===1?"":"s"}, ${new Date(b.created).toLocaleString()}.` : "No baseline yet.";
+  $("check").disabled = !b || !Object.keys(current).length;
+  $("dl").disabled = !b; $("clear").disabled = !b;
+}
+
+function showCurrent(){
+  const ul = $("current"); ul.textContent = "";
+  for(const [p, h] of Object.entries(current).sort()){
+    const li = document.createElement("li");
+    const name = document.createElement("span"); name.textContent = p;
+    const hs = document.createElement("span"); hs.className = "hash"; hs.textContent = h;
+    li.append(name, hs); ul.append(li);
+  }
+}
+
+async function pick(fileList, isFolder){
+  const files = [...fileList].filter(f => !isFolder || !relPath(f, true).split("/").slice(0, -1).some(s => SKIP.has(s)));
+  current = {}; $("report").hidden = true;
+  const skipped = [];
+  for(let i = 0; i < files.length; i++){
+    $("pickStatus").textContent = `Hashing ${i + 1} of ${files.length}…`;
+    try{ current[relPath(files[i], isFolder)] = await sha256(files[i]); }
+    catch(e){ skipped.push(files[i].name); }
+  }
+  const n = Object.keys(current).length;
+  $("pickStatus").textContent = n ? `Fingerprinted ${n} file${n===1?"":"s"}.` + (skipped.length ? ` Skipped (too large or unreadable): ${skipped.join(", ")}.` : "") : "No readable files in that selection.";
+  $("saveBase").disabled = !n;
+  $("check").disabled = !n || !baseline;
+  showCurrent();
+}
+
+function addLine(ul, tag, text){
+  const li = document.createElement("li");
+  const t = document.createElement("span"); t.className = "tag " + tag; t.textContent = tag;
+  const s = document.createElement("span"); s.textContent = text;
+  li.append(t, s); ul.append(li);
+}
+
+function runCheck(){
+  const r = compare(baseline.files, current), ul = $("changes"), v = $("verdict");
+  ul.textContent = ""; $("report").hidden = false;
+  r.modified.forEach(p => addLine(ul, "MODIFIED", p));
+  r.renamed.forEach(([a, b]) => addLine(ul, "RENAMED", `${a} → ${b}`));
+  r.added.forEach(p => addLine(ul, "ADDED", p));
+  r.deleted.forEach(p => addLine(ul, "DELETED", p));
+  const total = r.modified.length + r.renamed.length + r.added.length + r.deleted.length;
+  if(!total){ v.textContent = "No changes since the baseline."; v.className = "verdict good"; }
+  else{ v.textContent = `${r.modified.length} modified, ${r.renamed.length} renamed, ${r.added.length} added, ${r.deleted.length} deleted`; v.className = "verdict bad"; }
+}
+
+async function saveFile(name, text){
+  try{
+    if(window.claude && claude.use){
+      const d = await claude.use("downloads");
+      if(d){ await d.save({filename: name, data: text}); return; }
+    }
+  }catch(e){ if(e && e.code === "declined") return; }
+  const url = URL.createObjectURL(new Blob([text], {type: "application/json"}));
+  const a = document.createElement("a"); a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+$("pickFiles").addEventListener("change", e => pick(e.target.files, false));
+$("pickDir").addEventListener("change", e => pick(e.target.files, true));
+$("saveBase").addEventListener("click", () => setBaseline({created: Date.now(), files: {...current}}, true));
+$("check").addEventListener("click", runCheck);
+$("dl").addEventListener("click", () => saveFile("baseline.json", JSON.stringify(baseline.files, null, 2)));
+$("clear").addEventListener("click", () => { try{ localStorage.removeItem(KEY); }catch(e){} setBaseline(null, false); $("report").hidden = true; });
+$("loadBase").addEventListener("change", async e => {
+  const f = e.target.files[0]; if(!f) return;
+  try{
+    const data = JSON.parse(await f.text());
+    const files = data.files && typeof data.files === "object" ? data.files : data;
+    if(!Object.values(files).every(h => /^[0-9a-f]{64}$/.test(h))) throw new Error("bad");
+    setBaseline({created: Date.now(), files}, true);
+  }catch(err){ $("baseStatus").textContent = "That file is not a valid baseline. Use a baseline.json made by this page or by the Python tool."; }
+  e.target.value = "";
+});
+
+// Verify tab
+let vDigest = "";
+function vUpdate(){
+  const m = $("vHash").value.trim().toLowerCase().match(/[0-9a-f]{64}/);
+  const r = $("vResult"), d = $("vDetail");
+  if(!vDigest || !$("vHash").value.trim()){ r.textContent = ""; d.textContent = vDigest ? `File fingerprint: ${vDigest}` : ""; return; }
+  if(!m){ r.textContent = ""; d.textContent = "Paste a full 64-character SHA-256 checksum."; return; }
+  const ok = m[0] === vDigest;
+  r.textContent = ok ? "Match: the file is unchanged." : "No match: do not trust this file.";
+  r.className = "verdict " + (ok ? "good" : "bad");
+  d.textContent = ok ? "" : `File fingerprint: ${vDigest}`;
+}
+$("vFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; if(!f) return;
+  $("vStatus").textContent = `Hashing ${f.name}…`; vDigest = "";
+  try{ vDigest = await sha256(f); $("vStatus").textContent = f.name; }
+  catch(err){ $("vStatus").textContent = "Could not read that file (it may be too large)."; }
+  vUpdate();
+});
+$("vHash").addEventListener("input", vUpdate);
+
+// Tabs
+for(const [t, p, o, q] of [["t1","p1","t2","p2"],["t2","p2","t1","p1"]]){
+  $(t).addEventListener("click", () => {
+    $(t).setAttribute("aria-selected", "true"); $(o).setAttribute("aria-selected", "false");
+    $(p).hidden = false; $(q).hidden = true;
+  });
+}
+
+// Restore a saved baseline
+try{ const saved = JSON.parse(localStorage.getItem(KEY)); if(saved && saved.files) setBaseline(saved, false); else setBaseline(null, false); }
+catch(e){ setBaseline(null, false); }
+</script>
+</body>
+</html>
