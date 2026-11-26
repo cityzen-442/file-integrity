@@ -1,5 +1,5 @@
 # File Integrity Checker
-**Live demo:** https://YOUR-USERNAME.github.io/file-integrity-checker/
+**Live demo:** https://YOUR-USERNAME.github.io/file-integrity/
 
 ## Browser version
 
