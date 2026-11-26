@@ -1,4 +1,14 @@
 # File Integrity Checker
+**Live demo:** https://YOUR-USERNAME.github.io/file-integrity/
+
+## Browser version
+
+The same idea runs in the browser, with no install. Pick files or a folder, save a baseline, and check again later to see which files were modified, renamed, added or deleted. You can also verify a download by pasting the checksum its website published.
+
+- Files are read and hashed locally with the browser's built-in SHA-256. Nothing is uploaded.
+- The baseline is kept in the browser and can be downloaded as `baseline.json`.
+- The baseline format is the same as the Python tool's, so each tool can load the other's file.
+- Limit: very large files (several GB) may fail, because the browser loads a whole file into memory.
 
 A command-line tool, written in Python, that detects changed files. It fingerprints every file in a folder with SHA-256, saves the fingerprints as a baseline, and later reports what was modified, renamed, added or deleted. This is the same core idea as File Integrity Monitoring tools like Tripwire and AIDE.
 
